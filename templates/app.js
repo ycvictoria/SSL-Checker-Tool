@@ -4,7 +4,7 @@ let lastData = null; // Guardará el objeto JSON completo
 let pollInterval = null;
 let pollAttempts = null;
 let dnsAttempts = 0;
-const MAX_DNS_ATTEMPTS=12;
+const MAX_DNS_ATTEMPTS=20;
 
 // Referencias a los elementos del DOM
 const btnAnalyze = document.getElementById('btnAnalyze');
@@ -121,7 +121,7 @@ async function pollServer() {
             
             // Mostramos el mensaje visual y detenemos todo
             showErrorMessage(errorInfo);
-            if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+            stopPolling();
             document.getElementById('resStatus').innerText = "FAILED";
             return; // Salimos de la función para no intentar renderizar basura
         }
@@ -133,14 +133,14 @@ async function pollServer() {
             console.log(`DNS Attempt: ${dnsAttempts}/${MAX_DNS_ATTEMPTS}`);
             
             if (dnsAttempts >= MAX_DNS_ATTEMPTS) {
-                stopPolling();
+                
                 showErrorMessage({
                     title: "DNS Timeout",
                     msg: "The domain is taking too long to resolve. Please verify if it exists.",
                     type: "warning"
                 });
                   document.getElementById('status-banner').innerText = "";
-                if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+                stopPolling();
                 return; // Detenemos la ejecución
             }
         } else {
@@ -226,6 +226,8 @@ function renderEndpoints(data) {
             const certChains = details.certChains || [];
             const certIds = certChains.length > 0 ? (certChains[0].certIds || []) : [];
             const fullCerts = certIds.map(id => certsMap[id]).filter(c => c);
+
+            console.log("fullcerts", fullCerts)
                 // Lógica para Forward Secrecy (es un bitmask, generalmente > 0 es bueno)
       // 1. Forward Secrecy (Es una característica positiva, debe estar activada)
 const fsStatus = details.forwardSecrecy > 0 
@@ -242,12 +244,14 @@ const beastStatus = !details.vulnBeast
     ? '<span style="color: #198754;">✅ BEAST</span>'      // Chulo si NO es vulnerable
     : '<span style="color: #dc3545;">❌ BEAST</span>';
 
-            console.log("fullcerts", fullCerts)
+            
             const rowId = `certs-${index}`;
 
             return `
-                <tr class="align-middle">
-                    <td>
+            
+                <tr class="align-middle border-primary border-top  mb-5">
+                    
+               <td>
                     <div class="d-flex gap-1 flex-wrap fs-6"><strong>IP: ${ep.ipAddress}</strong> 
                     <span class="small">ServerName: ${ep.serverName}</span></div>
                     </td>
@@ -255,7 +259,7 @@ const beastStatus = !details.vulnBeast
                      <span class="small"> Time Duration: ${ep.duration} ms</span>
                     <span  class="small">Progress: ${ep.progress} %</span></div></td>
                     
-                    <td class="text-center"><span class="badge fs-5 p-2 px-3 ${getColor(ep.grade)}">${ep.grade || '?'}</span></td>
+                    <td class="w-auto text-nowrap text-center"><span class="badge fs-5   ${getColor(ep.grade)}">${ep.grade || '?'}</span></td>
                     <td>
                     <div class="d-flex gap-1 flex-wrap">${(details.protocols || []).map(p => `<span class="badge ${getProtocolClass(p.version)} bg-info me-1">${p.version + " "+p.name}</span>`).join("") || '---'}  </div></td>
                    <td>
@@ -268,11 +272,14 @@ const beastStatus = !details.vulnBeast
          <td><strong> ${fullCerts.length}</strong> </td>
                     
                 </tr>
-                <tr>${renderCertChainTable(fullCerts)}</tr>`  ;
+                <tr>${renderCertChainTable(fullCerts)}</tr>
+                
+                <tr class="border-0"><td colspan="100%" class="py-3 border-0"></td></tr>`  ;
               
         }).join("");
 
         tableBody.innerHTML = rows;
+        
         
     } catch (e) {
         console.error("Error dentro del mapeo:", e);
@@ -314,9 +321,9 @@ function renderCertChainTable(certs) {
     }).join("");
 
     return `
-     <th class="small">Certificados</th>
+     <th class="font-size: 0.8rem">Certificates</th>
         <table class="table table-sm table-hover mt-2 shadow-sm">
-            <thead class="table-secondary" style="font-size: 0.8rem;">
+            <thead class="table-secondary" style="font-size: 0.6rem;">
                 <tr>
                     <th>Grade</th><th>Subject</th><th>Criptography</th><th>Revocation Status</th><th> Validation Term</th>
                 </tr>
@@ -331,68 +338,6 @@ function getRevocationBadge(status) {
         default: return '<span class="badge bg-secondary">No verif.</span>';
     }
 }
-function renderConciseCertTable(certs) {
-    const rows = certs.map((cert, i) => {
-        const isLeaf = i === 0;
-        
-        // Convertimos los timestamps de milisegundos a formato legible
-        const emissionDate = new Date(cert.notBefore).toLocaleDateString('es-ES', {
-            year: 'numeric', month: 'short', day: 'numeric'
-        });
-        const expiryDate = new Date(cert.notAfter).toLocaleDateString('es-ES', {
-            year: 'numeric', month: 'short', day: 'numeric'
-        });
-
-        // "Protocolo" del certificado (Algoritmo de Firma + Tipo de Clave)
-        const certProtocol = `${cert.keyAlg} ${cert.keySize} / ${cert.sigAlg}`;
-
-        // Lógica de alerta para vencimiento próximo
-        const daysToExpiry = Math.floor((cert.notAfter - Date.now()) / (1000 * 60 * 60 * 24));
-        const expiryClass = daysToExpiry < 15 ? 'text-danger fw-bold' : (daysToExpiry < 30 ? 'text-warning' : 'text-muted');
-
-        return `
-            <tr style="font-size: 0.85rem;">
-                <td class="text-center">${isLeaf ? '<b>Sitio</b>' : '🔗'}</td>
-                <td>
-                    <div class="fw-bold">${cert.commonNames[0]}</div>
-                    <div class="small text-muted" style="font-size: 0.7rem;">${cert.subject}</div>
-                </td>
-                <td class="small text-muted">${cert.issuerSubject.split(',')[0].replace('CN=', '')}</td>
-                <td>
-                    <span class="badge bg-light text-dark border" style="font-size: 0.75rem;">
-                        ${certProtocol}
-                    </span>
-                </td>
-                <td class="small">
-                    <div title="Fecha de Emisión"><i class="bi bi-calendar-plus text-success"></i> ${emissionDate}</div>
-                    <div title="Fecha de Vencimiento" class="${expiryClass}">
-                        <i class="bi bi-calendar-minus"></i> ${expiryDate}
-                    </div>
-                </td>
-                <td class="text-center align-middle">
-                    ${getRevocationBadge(cert.revocationStatus)}
-                </td>
-            </tr>`;
-    }).join("");
-
-    return `
-        <div class="p-2">
-            <table class="table table-sm table-hover border mb-0 shadow-xs">
-                <thead class="table-dark" style="font-size: 0.75rem;">
-                    <tr>
-                        <th style="width: 50px;">Nivel</th>
-                        <th>Sujeto / Common Name</th>
-                        <th>Emisor (CA)</th>
-                        <th>Criptografía y Firma</th>
-                        <th>Validez (Emisión / Venc)</th>
-                        <th class="text-center">Estado</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white">${rows}</tbody>
-            </table>
-        </div>`;
-}
-
 const getProtocolClass = (version) => {
     if (!version) return 'bg-secondary';
     
