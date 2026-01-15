@@ -2,14 +2,18 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"ssl-checker/internal/model"
 	"ssl-checker/internal/repository"
 	"strings"
 	"sync"
 	"time"
 )
+
+const dbFile = "scans_db.json"
 
 type ScannerService struct {
 	Repo        *repository.SSLLabsRepo
@@ -68,6 +72,7 @@ func (s *ScannerService) Analyze(ctx context.Context, host string) (<-chan *mode
 				// Si el estado es READY, imprimimos éxito y salimos de la goroutine
 				if report.Status == "READY" {
 					log.Printf("✅ [TERMINADO]: Análisis de %s completado.", host)
+					s.SaveToDisk()
 					return
 				}
 
@@ -152,4 +157,70 @@ func (s *ScannerService) GenerateTXT(report *model.SSLReport) string {
 	}
 
 	return sb.String()
+}
+
+func (s *ScannerService) SaveToDisk() {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	data, err := json.MarshalIndent(s.activeScans, "", " ")
+	if err != nil {
+		fmt.Printf("\nError when saving json: %v", err)
+		return
+	}
+
+	//ahora en file
+	errFile := os.WriteFile(dbFile, data, 0644)
+	if errFile != nil {
+		fmt.Printf("Error when saving to file %v", err)
+	} else {
+		fmt.Printf("Data saved en : %s", dbFile)
+	}
+}
+
+func (s *ScannerService) LoadFromDisk() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	data, err := os.ReadFile(dbFile)
+	if err != nil {
+		fmt.Printf("Err when loading data %v", err) //o es la primera vez que no ha guardado
+		return
+	}
+	errLoad := json.Unmarshal(data, &s.activeScans)
+	if errLoad != nil {
+		fmt.Printf("Err when loading data %v", errLoad)
+		return
+	}
+}
+
+// por si mas adelante generar reporte de todos los sitios buscados en un solo .txt
+func (s *ScannerService) GenerateFullReportTXT() string {
+	// 1. Bloqueo de seguridad para lectura
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var fullBuilder strings.Builder
+
+	fullBuilder.WriteString("##########################################################\n")
+	fullBuilder.WriteString("          REPORTE GLOBAL DE TODOS LOS SITIOS\n")
+	fullBuilder.WriteString(fmt.Sprintf("          Generado el: %s\n", time.Now().Format("2006-01-02 15:04:05")))
+	fullBuilder.WriteString("##########################################################\n\n")
+
+	if len(s.activeScans) == 0 {
+		fullBuilder.WriteString("No hay datos disponibles en el historial.\n")
+		return fullBuilder.String()
+	}
+
+	// 2. Iterar sobre el mapa
+	for _, report := range s.activeScans {
+
+		reportText := s.GenerateTXT(report)
+
+		fullBuilder.WriteString(reportText)
+		fullBuilder.WriteString("\n\n") // Espacio entre reportes
+		fullBuilder.WriteString("##########################################################\n\n")
+	}
+
+	return fullBuilder.String()
 }

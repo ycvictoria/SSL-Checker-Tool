@@ -88,3 +88,15 @@ func (h *ScannerHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 	w.Write([]byte(content))
 }
+
+func (h *ScannerHandler) DownloadAllSearchedSites(w http.ResponseWriter, r *http.Request) {
+
+	content := h.Service.GenerateFullReportTXT()
+
+	// Limpiar el nombre para el archivo: google.com -> report_google_com.txt
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=reporte_global_ssl.txt")
+
+	w.Write([]byte(content))
+}
