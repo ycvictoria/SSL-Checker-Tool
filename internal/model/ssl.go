@@ -20,6 +20,10 @@ type Endpoint struct {
 	Duration   int64           `json:"duration"`
 	Progress   int8            `json:"progress"`
 	Details    EndpointDetails `json:"details"`
+
+	//for api ubication
+	City    string `json:"city"`
+	Country string `json:"country"`
 }
 
 type EndpointDetails struct {

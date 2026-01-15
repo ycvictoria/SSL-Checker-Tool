@@ -57,6 +57,14 @@ if (btnDownload) {
     });
 }
 
+const btnDownloadAll = document.getElementById('btnDownloadAll');
+if (btnDownloadAll) {
+    btnDownloadAll.addEventListener('click', () => {
+       console.log("Iniciando descarga global...");
+      window.location.href = "/downloadAll";
+    });
+}
+
 /**
  * Inicia el proceso de análisis
  */
@@ -87,7 +95,7 @@ function startAnalysis() {
         bannerStatusDisplay.classList.add('d-none'); // Lo oculta
     }
     // Limpiar cualquier intervalo previo antes de empezar uno nuevo
-    if (pollInterval) clearInterval(pollInterval);
+    stopPolling();
     
     // Ejecutar la primera consulta inmediatamente
     pollServer();
@@ -111,7 +119,7 @@ async function pollServer() {
 
         // --- 1. NUEVA LÓGICA: MANEJO DE ERRORES ESPECIALES ---
         if (data.status === "ERROR" || (data.statusMessage && data.statusMessage.includes("Rate limit"))) {
-            stopPolling();
+           // stopPolling();
             // Buscamos si es un error conocido en nuestro diccionario
             const errorInfo = specialErrorHandlers[data.statusMessage] || {
                 title: "Analysis Failed",
@@ -253,7 +261,11 @@ const beastStatus = !details.vulnBeast
                     
                <td>
                     <div class="d-flex gap-1 flex-wrap fs-6"><strong>IP: ${ep.ipAddress}</strong> 
+
                     <span class="small">ServerName: ${ep.serverName}</span></div>
+                    <div class="w-100"></div> <span class="badge bg-info text-dark">
+        Ubication: ${ep.city || 'Unknown'}, ${ep.country || 'Unknown'}
+    </span>
                     </td>
                     <td><div  class="d-flex gap-1 flex-wrap">
                      <span class="small"> Time Duration: ${ep.duration} ms</span>
